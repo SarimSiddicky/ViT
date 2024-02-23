@@ -347,8 +347,8 @@ for epoch in range(num_epochs):
         print("Early stopping")
         break
 
-    print(f">>> Epoch {epoch+1} train loss: {np.mean(train_losses)} train accuracy: {train_accuracy}")
-    print(f">>> Epoch {epoch+1} test loss: {np.mean(val_losses)} test accuracy: {val_accuracy}")
+    print(f">>> Epoch {epoch+1} - train loss: {np.mean(train_losses)} | train accuracy: {train_accuracy}")
+    print(f">>> Epoch {epoch+1} - test loss: {np.mean(val_losses)} | test accuracy: {val_accuracy}")
     
 
 model.eval()
