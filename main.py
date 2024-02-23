@@ -17,7 +17,6 @@ import numpy as np
 import random
 import torch.nn.functional as F
 from torchvision.transforms import Resize, ToTensor
-from torch.optim.lr_scheduler import ReduceLROnPlateau
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
 
