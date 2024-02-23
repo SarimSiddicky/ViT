@@ -16,13 +16,13 @@ import torch.optim as optim
 import numpy as np
 import random
 import torch.nn.functional as F
-from torchvision.transforms import Resize, ToTensor
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
 
 
-path_train = r"C:\Users\Sarim&Sahar\OneDrive\Desktop\ViTs for DBRP\data\training_data"
-path_test = r"C:\Users\Sarim&Sahar\OneDrive\Desktop\ViTs for DBRP\data\testing_data"
+
+path_train = r"C:\Users\Sarim&Sahar\OneDrive\Desktop\Science Fair ViT\data\training_data"
+path_test = r"C:\Users\Sarim&Sahar\OneDrive\Desktop\Science Fair ViT\data\testing_data"
 
 
 class Compose(object):
