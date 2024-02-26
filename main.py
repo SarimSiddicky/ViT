@@ -16,8 +16,9 @@ import torch.optim as optim
 import numpy as np
 import random
 import torch.nn.functional as F
-from keras.callbacks import EarlyStopping, ReduceLROnPlateau
-
+from keras.callbacks import ReduceLROnPlateau
+from torch.utils.data import SubsetRandomSampler
+from torch import optim
 
 
 
@@ -280,18 +281,122 @@ criterion = nn.CrossEntropyLoss(weight=class_weights_tensor)
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
+from keras.callbacks import ReduceLROnPlateau
+class EarlyStoppingPyTorch:
+    def __init__(self, patience=0, verbose=0):
+        self.patience = patience
+        self.verbose = verbose
+        self.counter = 0
+        self.best_score = None
+        self.early_stop = False
+        self.best_model = None
 
+    def __call__(self, val_loss, model):
+        score = -val_loss
+
+        if self.best_score is None:
+            self.best_score = score
+            self.save_checkpoint(model)
+        elif score < self.best_score:
+            self.counter += 1
+            if self.verbose:
+                print(f'EarlyStopping counter: {self.counter} out of {self.patience}')
+            if self.counter >= self.patience:
+                self.early_stop = True
+        else:
+            self.best_score = score
+            self.save_checkpoint(model)
+            self.counter = 0
+    
+    def save_checkpoint(self, model):
+        if self.verbose:
+            print('Saving best model...')
+        torch.save(model.state_dict(), r'C:\Users\Sarim&Sahar\OneDrive\Desktop\Science Fair ViT\save_data.pth')
+        self.best_model = model
+
+    def load_best_model(self, model):
+        model.load_state_dict(torch.load(r'C:\Users\Sarim&Sahar\OneDrive\Desktop\Science Fair ViT\save_data.pth'))
+        return model
 
 num_params = count_parameters(model)
 print(f"Number of parameters in the model: {num_params}")
 
+earlystopping = EarlyStoppingPyTorch(patience=3, verbose=1)
 
-earlystopping = EarlyStopping(monitor='val_loss', min_delta=0, patience=3, verbose=1, restore_best_weights=True)
+# Pass the model to the EarlyStopping callback
+#earlystopping.set_model(model)
 
-learning_rate_reduction = ReduceLROnPlateau(monitor='val_loss', patience=2, verbose=1, factor=0.2, min_lr=0.00000001)
+# Define optimizer and learning rate scheduler
+optimizer = optim.SGD(model.parameters(), lr=0.001)
+scheduler =torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=3, threshold=0.0001, threshold_mode='rel', cooldown=0, min_lr=0.00000001, eps=1e-06, verbose=1)
+#scheduler = ReduceLROnPlateau(monitor='val_loss', patience=3, verbose=1, factor=0.2, min_lr=0.00000001)
+# Define data loaders
+train_subset_sampler = SubsetRandomSampler(range(100))
+test_subset_sampler = SubsetRandomSampler(range(100))
+subset_train_dataloader = DataLoader(train.dataset, batch_size=32, sampler=train_subset_sampler)
+subset_test_dataloader = DataLoader(test.dataset, batch_size=32, sampler=test_subset_sampler)
 
-optimizer = optim.AdamW(model.parameters(), lr=0.001)
+# Training loop
+lr = []
+num_epochs = 3
+for epoch in range(num_epochs):
+    train_losses = []
+    train_correct_predictions = 0
+    train_total_samples = 0
+    
+    model.train()
+    for step, (inputs, labels) in enumerate(train_dataloader):#subset_train_dataloader for debugging
+        optimizer.zero_grad()
+        inputs, labels = inputs.to(device), labels.to(device)
+        outputs = model(inputs)
+        
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+        train_losses.append(loss.item())
+        
+        _, predicted = torch.max(outputs, 1)
+        train_correct_predictions += torch.sum(predicted == labels).item()
+        train_total_samples += labels.size(0)
 
+    train_accuracy = train_correct_predictions / train_total_samples
+
+    model.eval()
+    val_losses = []
+    val_correct_predictions = 0
+    val_total_samples = 0
+    
+    with torch.no_grad():
+        for step, (inputs, labels) in enumerate(test_dataloader):#subset_test_dataloader for debugging
+            inputs = inputs.to(device)
+            labels = labels.to(device)
+
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            val_losses.append(loss.item())
+
+            _, predicted = torch.max(outputs, 1)
+            val_correct_predictions += torch.sum(predicted == labels).item()
+            val_total_samples += labels.size(0)
+
+    val_accuracy = val_correct_predictions / val_total_samples
+    
+    # Check if early stopping criteria are met
+    val_loss_avg = np.mean(val_losses)
+    earlystopping(val_loss_avg, model)
+    scheduler.step(np.mean(val_losses))
+    if earlystopping.early_stop:
+        print("Early stopping")
+        break
+    print(f">>> Epoch {epoch+1} - train loss: {np.mean(train_losses)} | train accuracy: {train_accuracy}")
+    print(f">>> Epoch {epoch+1} - test loss: {np.mean(val_losses)} | test accuracy: {val_accuracy}")
+
+    # Update the learning rate based on the validation loss
+    scheduler.step(np.mean(val_losses))
+    print('epoch={}, learning rate={:.4f}'.format(epoch + 1, optimizer.state_dict()['param_groups'][0]['lr']))
+    lr.append(optimizer.state_dict()['param_groups'][0]['lr'])
+
+"""
 
 num_epochs = 10
 for epoch in range(num_epochs):
@@ -351,10 +456,14 @@ for epoch in range(num_epochs):
     print(f">>> Epoch {epoch+1} - test loss: {np.mean(val_losses)} | test accuracy: {val_accuracy}")
     
 
-model.eval()
+"""
+
+# Load best model
+best_model = earlystopping.load_best_model(model)
+best_model.eval()
 inputs, labels = next(iter(test_dataloader))
 inputs, labels = inputs.to(device), labels.to(device)
-outputs = model(inputs)
+outputs = best_model(inputs)
 probabilities = torch.nn.functional.softmax(outputs, dim=1)
 _, predicted_classes = torch.max(probabilities, 1)
 
@@ -410,5 +519,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
