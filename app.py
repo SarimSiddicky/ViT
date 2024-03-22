@@ -6,8 +6,8 @@ import torch
 import torchvision.transforms as transforms
 
 # Load the model
-model = torch.load('model_architecture.pth',map_location=torch.device('cpu'))
-model.load_state_dict(torch.load('model_weights.pth',map_location=torch.device('cpu')))
+model = torch.load('model_architecture (4).pth',map_location=torch.device('cpu'))
+model.load_state_dict(torch.load('model_weights (4).pth',map_location=torch.device('cpu')))
 model.eval()
 
 # Define the classes (replace with your actual class names)
