@@ -1,4 +1,4 @@
-
+import gradio as gr
 import tkinter as tk
 from tkinter import filedialog
 from PIL import Image
@@ -21,33 +21,12 @@ transform = transforms.Compose([
 ])
 model.eval()
 
-def classify_image():
-    file_path = filedialog.askopenfilename()
-    image = Image.open(file_path)
-    image = transform(image).unsqueeze(0)
+def classify_image(image):
+    image_tensor = transform(image).unsqueeze(0)
     with torch.no_grad():
-        outputs = model(image)
+        outputs = model(image_tensor)
         probabilities = torch.nn.functional.softmax(outputs, dim=1)
-        certainty_percentage = torch.max(probabilities, 1)
-        certainty_percentage = certainty_percentage[0].item() * 100
+    return {classes[i]: probabilities[0][i].item() for i in range(len(classes))}
 
-    with torch.no_grad():
-        outputs = model(image)
-        _, predicted = torch.max(outputs, 1)
-        class_name = classes[predicted.item()]
-        result_label.config(text=f"Predicted class: {class_name}, with Certainty {certainty_percentage}%")
-
-# Create the main window
-root = tk.Tk()
-root.title("Image Classifier")
-
-# Create a button to select an image
-select_button = tk.Button(root, text="Select Image", command=classify_image)
-select_button.pack(pady=20)
-
-# Create a label to display the result
-result_label = tk.Label(root, text="")
-result_label.pack(pady=20)
-
-# Run the main event loop
-root.mainloop()
+# Launch the Gradio interface
+gr.Interface(fn=classify_image, inputs=gr.Image(type="pil"), outputs=gr.Label(num_top_classes=5), title="Diabetic Retinopathy Classifier").launch()
