@@ -1,50 +1,27 @@
-
 import numpy as np
-import pandas as pd
-import os, random, sys
-import torch
+import os, random, torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset, sampler
+from torch.utils.data import DataLoader, sampler
 import torchvision.transforms as T
 from sklearn.model_selection import train_test_split
 import torchmetrics
 from torchvision import models
-from PIL import Image
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-import random
-from torch.utils.data import DataLoader
 from torchvision.datasets import ImageFolder
-from torch.utils.data import random_split
-import torchvision.datasets as datasets
-import torchvision.transforms as transforms
-from torchvision.transforms.functional import to_pil_image
 import torchvision.models as models
-import torch.onnx
 from torch.utils.data import Subset
 from sklearn.model_selection import train_test_split
-import albumentations as A
-from albumentations.pytorch import ToTensorV2
+
 torch.cuda.empty_cache()
 path_train = '/kaggle/input/diabetic-retinopathy-resized-arranged'
-# path_val = '/kaggle/input/gaussianvalidation/Gaussianfiltered'
-"""
-classes = ['0', '1', '2', '3', '4']
-
-
-for i in classes:
-    class_path = os.path.join(path_train, i)
-    num_images = len([file for file in os.listdir(class_path) if file.endswith(('jpg', 'jpeg', 'png'))])
-    print(f"class: {i}, num of datapoints: {num_images}")
-"""
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 print(device)
 output_dir = '/kaggle/working/'
-
 
 if not os.path.exists(output_dir):
     os.makedirs(output_dir, exist_ok=True)
@@ -85,27 +62,20 @@ path_test = path_train
 
 batch_size = 64
 IMAGE_SIZE = 224
-IMAGENET_MEAN = [0.485, 0.456, 0.406]         # Mean of ImageNet dataset (used for normalization)
-IMAGENET_STD = [0.229, 0.224, 0.225]         # Std of ImageNet dataset (used for normalization)
-"""
-train_transform = A.Compose(
+IMAGENET_MEAN = [0.485, 0.456, 0.406] 
+IMAGENET_STD = [0.229, 0.224, 0.225]         
 
-    [
-        A.SmallestMaxSize(max_size=224),
-        A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.05, rotate_limit=15, p=0.5),
-        A.RGBShift(r_shift_limit=15, g_shift_limit=15, b_shift_limit=15, p=0.5),
-        A.RandomBrightnessContrast(p=0.5),
-        A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-        ToTensorV2(),
-    ]
-)
-"""
 
 train_transform = T.Compose([
     T.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+    T.RandomHorizontalFlip(p=0.5),
     T.RandomAffine(degrees=15, translate=(0.05, 0.05), scale=(0.95, 1.05)),
-    T.ColorJitter(brightness=0.5, contrast=0.5),
+    T.ColorJitter(brightness=0.2, contrast=0.2),
+    T.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
     T.ToTensor(),
+    #T.RandomErasing(p=0.2, scale=(0.02, 0.05), ratio=(0.3, 3.3)),
+    T.RandomResizedCrop(IMAGE_SIZE, scale=(0.85, 1.0)),
+    T.RandomHorizontalFlip(p=0.5),
     T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
@@ -115,15 +85,7 @@ test_transform = T.Compose([
     T.ToTensor(),
     T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
 ])
-"""
-val_transform = A.Compose(
-    [
-        A.SmallestMaxSize(max_size=224),
-        A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-        ToTensorV2(),
-    ]
-)
-"""
+
 all_dataset = ImageFolder(path_train, transform=train_transform)
 dataset_test = ImageFolder(path_train, transform=test_transform)
 
@@ -177,15 +139,10 @@ def imshow(img):
     plt.imshow(np.transpose(npimg, (1, 2, 0)))
     plt.show()
 
-# Get a batch of images
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-
-# Get a batch of images
 images, labels = next(iter(train_loader))
 
-# Plot random images from the batch
 imshow(torchvision.utils.make_grid(images))
-
 
 
 weights = make_weights_for_balanced_classes(torch.tensor(all_dataset.targets)[train_dataset.indices])
@@ -197,10 +154,9 @@ test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, pin
 val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4)
 
 
-
-
 best_test_acc = 0
-best_epoch = 0
+best_epoch = 0.00
+.000000
 num_classes = 5
 train_losses = []
 val_losses = []
@@ -208,43 +164,38 @@ train_accuracies = []
 val_accuracies = []
 logs = ''
 
-
-
 print("Model: ViT")
-model = models.vit_b_16(weights='IMAGENET1K_V1').to(device)#weights='IMAGENET1K_V1'
-#model.load_state_dict(torch.load('/kaggle/input/yoloweights/yolov5s-seg.pt'))
-
-#model = torch.load('/kaggle/input/model-architecture/model_architecture (3).pth')##########################################load
-#model.load_state_dict(torch.load('/kaggle/input/model-weights/model_weights (3).pth'))############################load
-
-
+model = models.vit_b_16(weights='IMAGENET1K_V1').to(device)
 
 model.heads = nn.Sequential(
-    nn.Linear(in_features=768, out_features=5, bias=True)
-
-
+    nn.Linear(768, 512),
+    nn.ReLU(),
+    nn.Dropout(0.3),
+    nn.Linear(512, 256),
+    nn.ReLU(),
+    nn.Dropout(0.2),
+    nn.Linear(256, 5)
 )
-
 model = model.to(device)
 print(model)
 
-"""
-count = torch.bincount(torch.tensor(train_dataset.targets)).to(device)
-class_weight = len(train_dataset.targets) / count
+labels = torch.tensor(all_dataset.targets)[train_dataset.indices]
+class_counts = torch.bincount(labels)
+class_weights = 1.0 / class_counts.float()
+class_weights = class_weights / class_weights.sum()  # normalize
+class_weights = class_weights.to(device)
 
-print('Loss class weight:', class_weight)
-"""
-criterion = nn.CrossEntropyLoss().to(device)
+criterion = nn.CrossEntropyLoss(weight=class_weights).to(device)
 params = list(model.parameters())
 #optimizer = optim.SGD(params, lr=1e-3, weight_decay=1e-6, momentum=0.9)#, eps=1e-8)
-optimizer = optim.Adam(model.parameters(), lr=7e-5, weight_decay = 1e-4)#
-scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.7)
-#scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=4, mode='min')
+optimizer = optim.Adam(model.parameters(), lr=3e-5, weight_decay = 1e-4)
+
+#scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.7)
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=2, mode='min', verbose=True)
 
 accuracy = torchmetrics.Accuracy(task="multiclass", num_classes=num_classes, average='weighted').to(device)
 confmat = torchmetrics.ConfusionMatrix(task="multiclass", num_classes=num_classes, normalize='true').to(device)
 class_accuracy = torchmetrics.Accuracy(task="multiclass", num_classes=num_classes, average=None).to(device)
-
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -252,8 +203,8 @@ def count_parameters(model):
 num_params = count_parameters(model)
 print(f"Number of trainable parameters in the model: {num_params}")
 
-#TRAINING
-num_epochs =30
+# Training
+num_epochs = 40
 for epoch in range(num_epochs):
     t = tqdm(enumerate(train_loader, 0), total=len(train_loader),
                 smoothing=0.9, position=0, leave=True,
@@ -317,7 +268,7 @@ for epoch in range(num_epochs):
 
     test_accuracy = val_accuracy
 
-    #scheduler.step()
+    scheduler.step(val_loss)
     lr_log = f"LR: {optimizer.param_groups[0]['lr']}" # scheduler._last_lr
     print(lr_log)
     logs+=lr_log+'\n'
@@ -325,9 +276,9 @@ for epoch in range(num_epochs):
     train_results = f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss}, Training Accuracy: {train_accuracy}, Validation Loss: {val_loss}, Validation Accuracy: {val_accuracy}"
     print(train_results)
     logs+=train_results+'\n'
-    torch.save(model.state_dict(), os.path.join(output_dir, f'last.pth')) #Save model checkpoint
+    torch.save(model.state_dict(), os.path.join(output_dir, f'last.pth')) # Save model checkpoint
 
-    if (epoch+1)%5==0:
+    if (epoch+1)%5==0: # Save every 5 epochs
         torch.save(model.state_dict(), os.path.join(output_dir, f'epoch{epoch+1}.pth'))
 
 
@@ -363,13 +314,13 @@ for epoch in range(num_epochs):
         confmat_vals = np.around(confmat.compute().cpu().detach().numpy(), 3)
         im = ax.imshow(confmat_vals)
 
-        # Show all ticks and label them with the respective list entries
+   
         ax.set_xticks(np.arange(num_classes))
         ax.set_yticks(np.arange(num_classes))
         ax.set_xlabel('Predicted class')
         ax.set_ylabel('True class')
 
-        # Loop over data dimensions and create text annotations.
+    
         for i in range(num_classes):
             for j in range(num_classes):
                 text = ax.text(j, i, confmat_vals[i, j],ha="center", va="center", color="black", fontsize=12)
@@ -382,7 +333,7 @@ for epoch in range(num_epochs):
     accuracy.reset(); class_accuracy.reset(); confmat.reset()
 
 
-#Save the printed outputs to a log.txt file
+# Save to log file
 with open(os.path.join(output_dir, 'log.txt'), 'w') as log_file:
     log_file.write(logs)
     log_file.write(f'Best val accuracy: {best_test_acc} in epoch {best_epoch}')
@@ -409,12 +360,12 @@ plt.savefig(os.path.join(output_dir, 'loss_accuracy_graph.png'))
 plt.close()
 
 
+# Save
+torch.save(model, os.path.join('model_architecture.pth'))
+torch.save(model.state_dict(), os.path.join(output_dir, f'model_weights.pth'))
 
-torch.save(model, os.path.join('model_architecture.pth'))#############################################save
-torch.save(model.state_dict(), os.path.join(output_dir, f'model_weights.pth'))########################save
 
-
-#TESTING
+# Testing
 model.eval()
 
 test_loss = 0
@@ -434,9 +385,7 @@ with torch.no_grad():
     test_acc /= len(test_loader)
 print(f'Test Accuracy: {test_acc}, Test Loss: {test_loss}')
 
-
-
-#TESTING 2
+# Single batch testing w logits
 model.eval()
 with torch.no_grad():
     inputs, labels = next(iter(test_loader))
@@ -446,4 +395,4 @@ with torch.no_grad():
     print("Predicted classes", outputs.argmax(-1))
     print("Actual classes", labels)
 
-print("DR classifier model completed")
+print("DR classifier model completed") 
