@@ -1,4 +1,7 @@
 import numpy as np
+import cv2
+import numpy as np
+from PIL import Image
 import os, random, torch
 import torch.nn as nn
 import torch.optim as optim
@@ -14,6 +17,8 @@ from torchvision.datasets import ImageFolder
 import torchvision.models as models
 from torch.utils.data import Subset
 from sklearn.model_selection import train_test_split
+
+
 
 torch.cuda.empty_cache()
 path_train = '/kaggle/input/diabetic-retinopathy-resized-arranged'
@@ -65,20 +70,17 @@ IMAGE_SIZE = 224
 IMAGENET_MEAN = [0.485, 0.456, 0.406] 
 IMAGENET_STD = [0.229, 0.224, 0.225]         
 
-
+        
 train_transform = T.Compose([
     T.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+    T.RandomResizedCrop(IMAGE_SIZE, scale=(0.85, 1.0)),
     T.RandomHorizontalFlip(p=0.5),
     T.RandomAffine(degrees=15, translate=(0.05, 0.05), scale=(0.95, 1.05)),
     T.ColorJitter(brightness=0.2, contrast=0.2),
     T.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
     T.ToTensor(),
-    #T.RandomErasing(p=0.2, scale=(0.02, 0.05), ratio=(0.3, 3.3)),
-    T.RandomResizedCrop(IMAGE_SIZE, scale=(0.85, 1.0)),
-    T.RandomHorizontalFlip(p=0.5),
-    T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
 ])
-
 
 test_transform = T.Compose([
     T.Resize((IMAGE_SIZE, IMAGE_SIZE)),
@@ -170,10 +172,10 @@ model = models.vit_b_16(weights='IMAGENET1K_V1').to(device)
 model.heads = nn.Sequential(
     nn.Linear(768, 512),
     nn.ReLU(),
-    nn.Dropout(0.3),
+    nn.Dropout(0.5),
     nn.Linear(512, 256),
     nn.ReLU(),
-    nn.Dropout(0.2),
+    nn.Dropout(0.4),
     nn.Linear(256, 5)
 )
 model = model.to(device)
@@ -204,7 +206,7 @@ num_params = count_parameters(model)
 print(f"Number of trainable parameters in the model: {num_params}")
 
 # Training
-num_epochs = 40
+num_epochs = 30
 for epoch in range(num_epochs):
     t = tqdm(enumerate(train_loader, 0), total=len(train_loader),
                 smoothing=0.9, position=0, leave=True,
@@ -395,4 +397,4 @@ with torch.no_grad():
     print("Predicted classes", outputs.argmax(-1))
     print("Actual classes", labels)
 
-print("DR classifier model completed") 
+print("Model complete") 
