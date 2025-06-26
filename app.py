@@ -9,7 +9,7 @@ import torch.nn as nn
 model = models.vit_b_16(weights=None)
 model.heads = nn.Sequential(nn.Linear(768, 5)) 
 
-weights_path = "best.pth"
+weights_path = "best (1).pth"
 model.load_state_dict(torch.load(weights_path, map_location='cpu'))
 model.eval()
 
